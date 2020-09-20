@@ -1,0 +1,125 @@
+from PIL import Image, ImageDraw
+import pytesseract
+import cv2 as cv
+import numpy as np
+
+
+def look_for(word):
+    '''search for a word into members of a zip file
+    :param word: search for that word
+    :return dic: dictionary True if word is into member, else False
+    '''
+    
+    dic = {}
+    for el in files_lst:
+    
+        im = Image.open(my_zip.open(el))
+        img=im.convert('L')
+        text = pytesseract.image_to_string(img)
+    
+        if word in text:
+            dic [el.filename] = True
+        else:
+            dic [el.filename] = False
+    return dic   
+        
+
+def get_faces(dic_wrd, scale_rate=1.35):
+    ''' This fuction take as input the output of look_for functio. 
+        It returns as a dictionary picture of faces for every file in the zip
+    :param dic_wrd: dictionary, output of look_for function
+    :param scale_rate: float, define the scale_rate for the faces 
+    :return dic_bb: return a dictionary with files: PIL.Image format faces
+    '''
+    max_size = (100,100)
+    dic_bb = {}
+    for el in files_lst:
+        faces_lst = []
+        if dic_wrd[el.filename]:
+            img = cv.imread(my_zip.extract(el))
+            #create a RGB copy
+            img_rgb = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+            # And we'll convert it to grayscale using the cvtColor image
+            gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray,scale_rate)
+            # Now let's paste the faces from the coloured image
+            if faces != ():
+                for x,y,w,h in faces.tolist():
+                    pil_im=Image.fromarray(img_rgb[y:y+h,x:x+w])
+                    pil_im.thumbnail(max_size)
+                    faces_lst.append(pil_im)
+                dic_bb [el.filename] = faces_lst
+            #if there are no faces:
+            else:
+                dic_bb [el.filename] = []
+    
+    return dic_bb
+	
+
+def get_base(dic):
+    '''get the measures that the sheet need and prduce the base
+    :return: tuple with base sheet and dictionary with rows per  
+    '''
+ 
+    n_empty=0
+    rows ={}
+    for el in dic.keys():
+        if dic[el]==[]:
+            n_empty+=1
+            rows[el] = 0
+        elif len(dic[el])%5==0:
+            n_rows=int(len(dic[el])/5)
+            rows [el] = n_rows
+        else:
+            n_rows=len(dic[el])//5+1
+            rows [el] = n_rows
+    n_rows=sum(rows.values())
+    
+    size=  (5*100, 20*len(dic.keys())+20*n_empty+100*n_rows)
+    base = Image.new('RGB',size)
+    return (base, rows)
+	
+
+def make_sheet(dic,tup):
+    '''Make sheet from images in a dictionary
+    :param dic: dictionary <filename> : <list of faces images>
+    :param tup: base = tup[0] dictionary file:rows = tup [1] <-- from get_size
+    '''
+    h=0
+    for el in dic.keys():
+        #title for every file
+        title = Image.new('RGB',(500,20),color='white')
+        title_txt = ImageDraw.Draw(title)
+        title_txt.text((0,0),'Results found in file {}'.format(el),fill='black')
+        tup[0].paste(title,(0,h))
+        h+=20
+        # pictures for every file
+        n=0
+        if dic[el]== []:
+            title_2 = Image.new('RGB',(500,20),color='white')
+            title_2_txt = ImageDraw.Draw(title_2)
+            title_2_txt.text((0,0),'But there were no faces in that file!',fill='black')
+            tup[0].paste(title_2,(0,h))
+            h+=20
+        else:
+            for pics in dic[el]:
+                w=(n%5)*100
+                #max five pictures per line
+                if n>1 and n%5==0:
+                    h+=100   
+                tup[0].paste(pics,(w,h))
+                n+=1
+                #display(tup[0])
+            h+=100
+    display(tup[0])        
+    return tup[0]       
+
+
+#pytesseract.pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe' this line was necessary on my computer
+# loading the face detection classifier
+face_cascade = cv.CascadeClassifier('readonly/haarcascade_frontalface_default.xml')
+my_zip = zipfile.ZipFile('readonly/small_img.zip') #write the zipfile path here
+files_lst = my_zip.infolist()
+my_dict=get_faces(look_for('Christopher'))
+base = get_base(my_dict)
+y=make_sheet(my_dict,base)
